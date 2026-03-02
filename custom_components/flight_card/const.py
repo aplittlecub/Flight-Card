@@ -14,7 +14,7 @@ CONF_MAX_AGE = "max_age"
 CONF_HEXDB_ENABLED = "hexdb_enabled"
 
 DEFAULT_NAME = "Flight Card"
-DEFAULT_DATA_URL = "http://10.10.0.249/skyaware/data/aircraft.json"
+DEFAULT_DATA_URL = "http://192.168.1.250/skyaware/data/aircraft.json"
 DEFAULT_UPDATE_INTERVAL = 10
 DEFAULT_MAX_AGE = 60
 DEFAULT_HEXDB_ENABLED = True

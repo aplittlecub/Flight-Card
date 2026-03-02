@@ -180,6 +180,12 @@ class FlightCard extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+
+    if (this._map && !this._hasConfiguredCenter() && this._latestGeoJson.features.length === 0) {
+      const center = this._resolveInitialCenter();
+      this._map.setView(center, this._config.default_zoom, { animate: false });
+    }
+
     this._syncFromHass();
   }
 
@@ -584,8 +590,15 @@ class FlightCard extends HTMLElement {
   }
 
   private _resolveInitialCenter(): [number, number] {
-    if (Number.isFinite(this._config.center_lat) && Number.isFinite(this._config.center_lon)) {
+    if (this._hasConfiguredCenter()) {
       return [this._config.center_lat as number, this._config.center_lon as number];
+    }
+
+    const homeZone = this._hass?.states?.["zone.home"];
+    const zoneLat = Number(homeZone?.attributes?.latitude);
+    const zoneLon = Number(homeZone?.attributes?.longitude);
+    if (Number.isFinite(zoneLat) && Number.isFinite(zoneLon)) {
+      return [zoneLat, zoneLon];
     }
 
     if (
@@ -596,7 +609,18 @@ class FlightCard extends HTMLElement {
       return [this._hass.config.latitude as number, this._hass.config.longitude as number];
     }
 
-    return [51.5072, -0.1276];
+    const firstFeature = this._latestGeoJson.features[0];
+    const firstLon = Number(firstFeature?.geometry?.coordinates?.[0]);
+    const firstLat = Number(firstFeature?.geometry?.coordinates?.[1]);
+    if (Number.isFinite(firstLat) && Number.isFinite(firstLon)) {
+      return [firstLat, firstLon];
+    }
+
+    return [0, 0];
+  }
+
+  private _hasConfiguredCenter(): boolean {
+    return Number.isFinite(this._config.center_lat) && Number.isFinite(this._config.center_lon);
   }
 
   private _popupHtml(props: FlightFeatureProperties): string {
