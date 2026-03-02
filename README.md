@@ -39,6 +39,9 @@ This integration now auto-serves and auto-loads the card JavaScript from:
 4. Finish setup.
 5. Confirm the sensor exists in **Developer Tools -> States** (usually `sensor.flight_card_aircraft`).
 
+To change `Data URL` later, use **Devices & Services -> ADS-B Nearby Aircraft -> Reconfigure**.
+Use **Configure** (options) for polling and enrichment settings.
+
 ## Add Card to Dashboard
 
 ```yaml
@@ -137,9 +140,9 @@ If you are not using HACS:
 3. Add the integration in **Settings -> Devices & Services**.
 4. Hard refresh the browser (`Shift+Reload`).
 
-## Licensing & Attribution (Final Published - v0.3.1)
+## Licensing & Attribution (Final Published - v0.3.2)
 
-ADS-B Nearby Aircraft source code is published under **MIT** (see `package.json`).
+ADS-B Nearby Aircraft source code is published under **MIT** (see [`LICENSE`](LICENSE)).
 
 Third-party assets/services used by this release:
 
