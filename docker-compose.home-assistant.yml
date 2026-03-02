@@ -18,3 +18,4 @@ services:
     volumes:
       - ./local-ha/config:/config
       - ./dist:/opt/flight-card-dist:ro
+      - ./custom_components:/config/custom_components:ro

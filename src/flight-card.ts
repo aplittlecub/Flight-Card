@@ -1,11 +1,8 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
 import leafletCss from "leaflet/dist/leaflet.css?inline";
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.3.1";
 const CARD_TYPE = "flight-card";
-const HEXDB_LOOKUP_ENDPOINT = "https://hexdb.io/api/v1/aircraft/";
-const HEXDB_IMAGE_THUMB_ENDPOINT = "https://hexdb.io/hex-image-thumb?hex=";
-const MAX_HEXDB_LOOKUPS_PER_POLL = 6;
 const ADSB_ICON_MODULES = import.meta.glob("./assets/adsb-icons/*.svg", {
   eager: true,
   import: "default",
@@ -33,7 +30,15 @@ const ALTITUDE_COLOR_STOPS: Array<{ altitudeFt: number; color: [number, number, 
   { altitudeFt: 40000, color: [224, 82, 248] },
 ];
 
+interface HassEntity {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
+  last_updated?: string;
+}
+
 interface HomeAssistant {
+  states?: Record<string, HassEntity>;
   config?: {
     latitude?: number;
     longitude?: number;
@@ -42,10 +47,7 @@ interface HomeAssistant {
 
 interface FlightCardConfig {
   title: string;
-  data_url: string;
-  update_interval: number;
-  max_age: number;
-  hexdb_enabled: boolean;
+  entity: string;
   map_height: number;
   default_zoom: number;
   fit_bounds: boolean;
@@ -53,54 +55,6 @@ interface FlightCardConfig {
   center_lon: number | null;
   tile_url: string;
   attribution: string;
-}
-
-interface AircraftEntry {
-  hex?: string;
-  flight?: string;
-  category?: string;
-  t?: string;
-  type?: string;
-  ac_type?: string;
-  aircraft_type?: string;
-  desc?: string;
-  lat?: number | string | null;
-  lon?: number | string | null;
-  alt_baro?: number | string | null;
-  alt_geom?: number | string | null;
-  altitude?: number | string | null;
-  gs?: number | string | null;
-  speed?: number | string | null;
-  track?: number | string | null;
-  seen?: number | string | null;
-  seen_pos?: number | string | null;
-}
-
-interface AircraftPayload {
-  aircraft?: AircraftEntry[];
-}
-
-interface HexDbAircraftResponse {
-  ICAOTypeCode?: string;
-  Manufacturer?: string;
-  ModeS?: string;
-  OperatorFlagCode?: string;
-  RegisteredOwners?: string;
-  Registration?: string;
-  Type?: string;
-  status?: string;
-  error?: string;
-}
-
-interface HexDbAircraftInfo {
-  icaoTypeCode: string;
-  manufacturer: string;
-  modeS: string;
-  operatorFlagCode: string;
-  registeredOwners: string;
-  registration: string;
-  type: string;
-  imageUrl: string;
 }
 
 interface FlightFeatureProperties {
@@ -134,10 +88,7 @@ type LeafletModule = typeof import("leaflet");
 
 const DEFAULT_CONFIG: FlightCardConfig = {
   title: "Nearby Aircraft",
-  data_url: "http://10.10.0.249/skyaware/data/aircraft.json",
-  update_interval: 10,
-  max_age: 60,
-  hexdb_enabled: true,
+  entity: "sensor.aircraft",
   map_height: 420,
   default_zoom: 8,
   fit_bounds: true,
@@ -145,6 +96,11 @@ const DEFAULT_CONFIG: FlightCardConfig = {
   center_lon: null,
   tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap contributors</a>",
+};
+
+const EMPTY_COLLECTION: FlightCollection = {
+  type: "FeatureCollection",
+  features: [],
 };
 
 class FlightCard extends HTMLElement {
@@ -158,14 +114,11 @@ class FlightCard extends HTMLElement {
   private _mapResizeObserver?: ResizeObserver;
   private _resizeFixTimeouts: number[] = [];
 
-  private _pollTimer?: number;
-  private _fetchController?: AbortController;
   private _hasAutofit = false;
   private _root?: ShadowRoot;
-  private _latestGeoJson?: FlightCollection;
-  private _hexDbCache = new Map<string, HexDbAircraftInfo | null>();
-  private _hexDbInFlight = new Set<string>();
-  private _hexDbRefreshDebounce?: number;
+  private _latestGeoJson: FlightCollection = EMPTY_COLLECTION;
+  private _lastRenderedFingerprint = "";
+  private _resolvedEntityId = "";
 
   private _els: {
     card?: HTMLElement;
@@ -179,7 +132,7 @@ class FlightCard extends HTMLElement {
   static getStubConfig(): Partial<FlightCardConfig> {
     return {
       title: DEFAULT_CONFIG.title,
-      data_url: DEFAULT_CONFIG.data_url,
+      entity: DEFAULT_CONFIG.entity,
     };
   }
 
@@ -187,20 +140,17 @@ class FlightCard extends HTMLElement {
     return {
       schema: [
         { name: "title", selector: { text: {} } },
-        { name: "data_url", required: true, selector: { text: {} } },
+        { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
         {
           type: "grid",
           name: "",
           flatten: true,
           schema: [
-            { name: "update_interval", selector: { number: { min: 2, max: 600, mode: "box" } } },
-            { name: "max_age", selector: { number: { min: 1, max: 3600, mode: "box" } } },
             { name: "default_zoom", selector: { number: { min: 1, max: 18, mode: "box" } } },
             { name: "map_height", selector: { number: { min: 200, max: 1200, mode: "box" } } },
           ],
         },
         { name: "fit_bounds", selector: { boolean: {} } },
-        { name: "hexdb_enabled", selector: { boolean: {} } },
         {
           type: "expandable",
           name: "advanced",
@@ -215,13 +165,10 @@ class FlightCard extends HTMLElement {
         },
       ],
       computeLabel(schema: { name?: string }) {
-        if (schema.name === "data_url") return "Data URL";
-        if (schema.name === "update_interval") return "Update interval (seconds)";
-        if (schema.name === "max_age") return "Max aircraft age (seconds)";
+        if (schema.name === "entity") return "Aircraft entity";
         if (schema.name === "default_zoom") return "Default zoom";
         if (schema.name === "map_height") return "Map height (px)";
         if (schema.name === "fit_bounds") return "Auto-fit map to aircraft";
-        if (schema.name === "hexdb_enabled") return "Enable HexDB aircraft enrichment";
         if (schema.name === "center_lat") return "Center latitude";
         if (schema.name === "center_lon") return "Center longitude";
         if (schema.name === "tile_url") return "Tile URL";
@@ -233,6 +180,7 @@ class FlightCard extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    this._syncFromHass();
   }
 
   get hass(): HomeAssistant | undefined {
@@ -247,16 +195,14 @@ class FlightCard extends HTMLElement {
     this._applyVisualConfig();
 
     if (this._map) {
-      // Apply center/zoom updates when card config changes in-place.
       const center = this._resolveInitialCenter();
       this._map.setView(center, this._config.default_zoom, { animate: false });
-      this._hasAutofit = false;
       this._scheduleResizeFixes();
     }
 
     if (this.isConnected) {
       void this._ensureMap();
-      this._restartPolling();
+      this._syncFromHass();
     }
   }
 
@@ -264,12 +210,10 @@ class FlightCard extends HTMLElement {
     this._render();
     this._applyVisualConfig();
     void this._ensureMap();
-    this._restartPolling();
+    this._syncFromHass();
   }
 
   disconnectedCallback(): void {
-    this._stopPolling();
-
     if (this._map) {
       this._map.remove();
       this._map = undefined;
@@ -283,10 +227,6 @@ class FlightCard extends HTMLElement {
 
     this._resizeFixTimeouts.forEach((id) => window.clearTimeout(id));
     this._resizeFixTimeouts = [];
-    if (this._hexDbRefreshDebounce !== undefined) {
-      window.clearTimeout(this._hexDbRefreshDebounce);
-      this._hexDbRefreshDebounce = undefined;
-    }
     this._mapInitPromise = undefined;
   }
 
@@ -387,7 +327,6 @@ class FlightCard extends HTMLElement {
           height: 100%;
         }
 
-        /* Prevent HA/global img styles from shrinking tiles and breaking layout. */
         .flight-card__map .leaflet-tile,
         .flight-card__map .leaflet-marker-icon,
         .flight-card__map .leaflet-marker-shadow,
@@ -537,9 +476,10 @@ class FlightCard extends HTMLElement {
 
         this._aircraftLayer.addTo(this._map);
         this._startResizeObserver();
-        this._setStatus("ok", "Waiting for data");
-
         this._map.whenReady(() => this._scheduleResizeFixes());
+
+        this._renderGeoJson(this._latestGeoJson);
+        this._syncFromHass();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown map error";
         this._setStatus("error", `Map error: ${message}`);
@@ -551,84 +491,62 @@ class FlightCard extends HTMLElement {
     return this._mapInitPromise;
   }
 
-  private _restartPolling(): void {
-    this._stopPolling();
-
-    void this._pollOnce();
-    this._pollTimer = window.setInterval(() => {
-      void this._pollOnce();
-    }, this._config.update_interval * 1000);
-  }
-
-  private _stopPolling(): void {
-    if (this._pollTimer !== undefined) {
-      window.clearInterval(this._pollTimer);
-      this._pollTimer = undefined;
-    }
-
-    if (this._fetchController) {
-      this._fetchController.abort();
-      this._fetchController = undefined;
-    }
-  }
-
-  private async _pollOnce(): Promise<void> {
-    if (!this._map) {
-      await this._ensureMap();
-      if (!this._map) {
-        return;
-      }
-    }
-
-    if (this._fetchController) {
+  private _syncFromHass(): void {
+    if (!this._hass) {
       return;
     }
 
-    try {
-      this._setStatus("idle", "Updating");
-
-      this._fetchController = new AbortController();
-      const response = await fetch(this._config.data_url, {
-        method: "GET",
-        cache: "no-store",
-        signal: this._fetchController.signal,
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const payload = (await response.json()) as AircraftPayload;
-      const geoJson = aircraftToGeoJson(payload, this._config.max_age);
-      this._latestGeoJson = geoJson;
-      if (this._config.hexdb_enabled) {
-        this._applyCachedHexDbData(geoJson);
-        this._queueHexDbLookups(geoJson);
-      }
-      this._renderGeoJson(geoJson);
-
+    const entityId = resolveConfiguredOrAutoEntity(this._hass, this._config.entity);
+    this._resolvedEntityId = entityId;
+    const entity = entityId ? this._hass.states?.[entityId] : undefined;
+    if (!entity) {
       if (this._els.count) {
-        this._els.count.textContent = `Aircraft: ${geoJson.features.length}`;
+        this._els.count.textContent = "Aircraft: 0";
       }
-
       if (this._els.updated) {
-        this._els.updated.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+        this._els.updated.textContent = "Updated: never";
       }
-
-      this._setStatus("ok", "Live");
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-
-      const message = error instanceof Error ? error.message : "Unknown update error";
-      this._setStatus("error", `Update failed: ${message}`);
-    } finally {
-      this._fetchController = undefined;
+      this._setStatus("error", `Entity not found: ${this._config.entity}`);
+      this._latestGeoJson = EMPTY_COLLECTION;
+      this._renderGeoJson(this._latestGeoJson);
+      return;
     }
+
+    const rawGeoJson = entity.attributes?.geojson;
+    const hasGeoJson =
+      isObjectRecord(rawGeoJson) &&
+      rawGeoJson.type === "FeatureCollection" &&
+      Array.isArray(rawGeoJson.features);
+    const geoJson = normalizeGeoJson(rawGeoJson);
+    const updated = formatUpdated(entity.attributes?.updated ?? entity.last_updated);
+
+    const fingerprint = `${entity.state}|${String(entity.attributes?.updated ?? "")}|${geoJson.features.length}`;
+    if (fingerprint !== this._lastRenderedFingerprint) {
+      this._lastRenderedFingerprint = fingerprint;
+      this._latestGeoJson = geoJson;
+      this._renderGeoJson(geoJson);
+    }
+
+    if (this._els.count) {
+      const countFromState = Number(entity.state);
+      const displayCount = Number.isFinite(countFromState) ? countFromState : geoJson.features.length;
+      this._els.count.textContent = `Aircraft: ${Math.max(0, Math.round(displayCount))}`;
+    }
+
+    if (this._els.updated) {
+      this._els.updated.textContent = `Updated: ${updated}`;
+    }
+
+    if (entity.state === "unavailable") {
+      this._setStatus("error", "Entity unavailable");
+      return;
+    }
+    if (entity.state === "unknown" || !hasGeoJson) {
+      this._setStatus("idle", `Waiting for backend data (${entity.entity_id})`);
+      return;
+    }
+
+    this._setStatus("ok", "Live");
   }
 
   private _renderGeoJson(geoJson: FlightCollection): void {
@@ -641,9 +559,10 @@ class FlightCard extends HTMLElement {
 
     if (geoJson.features.length === 0) {
       this._hasAutofit = false;
+      return;
     }
 
-    if (this._config.fit_bounds && geoJson.features.length > 0) {
+    if (this._config.fit_bounds) {
       const bounds = this._aircraftLayer.getBounds();
       if (bounds.isValid() && !this._hasAutofit) {
         this._map.fitBounds(bounds, {
@@ -785,154 +704,6 @@ class FlightCard extends HTMLElement {
       observer.observe(mapEl);
     });
   }
-
-  private _applyCachedHexDbData(geoJson: FlightCollection): boolean {
-    let changed = false;
-    for (const feature of geoJson.features) {
-      const props = feature.properties;
-      const hex = normalizeHex(props.hex);
-      if (!hex) {
-        continue;
-      }
-
-      const info = this._hexDbCache.get(hex);
-      if (!info) {
-        continue;
-      }
-
-      changed = mergeHexDbIntoProperties(props, info) || changed;
-    }
-    return changed;
-  }
-
-  private _queueHexDbLookups(geoJson: FlightCollection): void {
-    if (!this._config.hexdb_enabled) {
-      return;
-    }
-
-    const candidates = new Set<string>();
-    for (const feature of geoJson.features) {
-      const hex = normalizeHex(feature.properties.hex);
-      if (!hex) {
-        continue;
-      }
-      if (this._hexDbCache.has(hex) || this._hexDbInFlight.has(hex)) {
-        continue;
-      }
-      candidates.add(hex);
-    }
-
-    let started = 0;
-    for (const hex of candidates) {
-      if (started >= MAX_HEXDB_LOOKUPS_PER_POLL) {
-        break;
-      }
-      started += 1;
-      this._hexDbInFlight.add(hex);
-
-      void this._fetchHexDbAircraft(hex)
-        .then((info) => {
-          this._hexDbCache.set(hex, info);
-          if (this._latestGeoJson && this._applyCachedHexDbData(this._latestGeoJson)) {
-            this._scheduleHexDbRefresh();
-          }
-        })
-        .catch(() => {
-          this._hexDbCache.set(hex, null);
-        })
-        .finally(() => {
-          this._hexDbInFlight.delete(hex);
-        });
-    }
-  }
-
-  private _scheduleHexDbRefresh(): void {
-    if (this._hexDbRefreshDebounce !== undefined) {
-      window.clearTimeout(this._hexDbRefreshDebounce);
-    }
-
-    this._hexDbRefreshDebounce = window.setTimeout(() => {
-      this._hexDbRefreshDebounce = undefined;
-      if (!this._latestGeoJson) {
-        return;
-      }
-      this._renderGeoJson(this._latestGeoJson);
-    }, 120);
-  }
-
-  private async _fetchHexDbAircraft(hex: string): Promise<HexDbAircraftInfo | null> {
-    const [aircraftResponse, imageUrl] = await Promise.all([
-      fetch(`${HEXDB_LOOKUP_ENDPOINT}${encodeURIComponent(hex)}`, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-        },
-      }),
-      this._fetchHexDbImageUrl(hex),
-    ]);
-
-    if (!aircraftResponse.ok) {
-      return null;
-    }
-
-    const payload = (await aircraftResponse.json()) as HexDbAircraftResponse;
-    if (String(payload.status) === "404" || payload.error) {
-      return null;
-    }
-
-    const info: HexDbAircraftInfo = {
-      icaoTypeCode: firstNonEmptyString([payload.ICAOTypeCode]),
-      manufacturer: firstNonEmptyString([payload.Manufacturer]),
-      modeS: firstNonEmptyString([payload.ModeS]),
-      operatorFlagCode: firstNonEmptyString([payload.OperatorFlagCode]),
-      registeredOwners: firstNonEmptyString([payload.RegisteredOwners]),
-      registration: firstNonEmptyString([payload.Registration]),
-      type: firstNonEmptyString([payload.Type]),
-      imageUrl,
-    };
-
-    if (
-      !info.icaoTypeCode &&
-      !info.manufacturer &&
-      !info.modeS &&
-      !info.operatorFlagCode &&
-      !info.registeredOwners &&
-      !info.registration &&
-      !info.type &&
-      !info.imageUrl
-    ) {
-      return null;
-    }
-
-    return info;
-  }
-
-  private async _fetchHexDbImageUrl(hex: string): Promise<string> {
-    const response = await fetch(`${HEXDB_IMAGE_THUMB_ENDPOINT}${encodeURIComponent(hex)}`, {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Accept: "text/plain",
-      },
-    });
-
-    if (!response.ok) {
-      return "";
-    }
-
-    const text = (await response.text()).trim();
-    if (!text) {
-      return "";
-    }
-    if (text.startsWith("http://") || text.startsWith("https://")) {
-      return text;
-    }
-    if (text.startsWith("/")) {
-      return `https://hexdb.io${text}`;
-    }
-    return "";
-  }
 }
 
 function normalizeConfig(config: Partial<FlightCardConfig> & Record<string, unknown>): FlightCardConfig {
@@ -946,10 +717,7 @@ function normalizeConfig(config: Partial<FlightCardConfig> & Record<string, unkn
   };
 
   merged.title = String(merged.title || DEFAULT_CONFIG.title);
-  merged.data_url = String(merged.data_url || DEFAULT_CONFIG.data_url);
-  merged.update_interval = clampNumber(merged.update_interval, 2, 600, DEFAULT_CONFIG.update_interval);
-  merged.max_age = clampNumber(merged.max_age, 1, 3600, DEFAULT_CONFIG.max_age);
-  merged.hexdb_enabled = merged.hexdb_enabled !== false;
+  merged.entity = String(merged.entity || DEFAULT_CONFIG.entity).trim();
   merged.map_height = clampNumber(merged.map_height, 200, 1200, DEFAULT_CONFIG.map_height);
   merged.default_zoom = clampNumber(merged.default_zoom, 1, 18, DEFAULT_CONFIG.default_zoom);
   merged.fit_bounds = merged.fit_bounds !== false;
@@ -974,8 +742,8 @@ function normalizeConfig(config: Partial<FlightCardConfig> & Record<string, unkn
   merged.tile_url = String(merged.tile_url || DEFAULT_CONFIG.tile_url);
   merged.attribution = String(merged.attribution || DEFAULT_CONFIG.attribution);
 
-  if (!merged.data_url) {
-    throw new Error("Please set data_url in card configuration");
+  if (!merged.entity) {
+    throw new Error("Please set entity in card configuration");
   }
 
   return merged;
@@ -997,6 +765,122 @@ function clampNumber(value: number, min: number, max: number, fallback: number):
   }
 
   return Math.min(max, Math.max(min, num));
+}
+
+function normalizeGeoJson(value: unknown): FlightCollection {
+  if (!isObjectRecord(value) || value.type !== "FeatureCollection" || !Array.isArray(value.features)) {
+    return EMPTY_COLLECTION;
+  }
+
+  const features: FlightFeature[] = [];
+  for (const rawFeature of value.features) {
+    const normalized = normalizeFeature(rawFeature);
+    if (normalized) {
+      features.push(normalized);
+    }
+  }
+
+  return {
+    type: "FeatureCollection",
+    features,
+  };
+}
+
+function resolveConfiguredOrAutoEntity(hass: HomeAssistant, configuredEntity: string): string {
+  const states = hass.states ?? {};
+  const trimmedConfigured = configuredEntity.trim();
+  if (trimmedConfigured && states[trimmedConfigured]) {
+    return trimmedConfigured;
+  }
+
+  const entries = Object.values(states);
+
+  const byDomainTag = entries.find((entity) => {
+    const source = entity.attributes?.source_domain;
+    return typeof source === "string" && source === "flight_card";
+  });
+  if (byDomainTag) {
+    return byDomainTag.entity_id;
+  }
+
+  const byGeoJsonShape = entries.find((entity) => {
+    const attrs = entity.attributes;
+    const geojson = attrs?.geojson;
+    return (
+      isObjectRecord(geojson) &&
+      geojson.type === "FeatureCollection" &&
+      Array.isArray(geojson.features) &&
+      typeof attrs?.config_entry_id === "string"
+    );
+  });
+
+  return byGeoJsonShape?.entity_id ?? "";
+}
+
+function normalizeFeature(value: unknown): FlightFeature | null {
+  if (!isObjectRecord(value)) {
+    return null;
+  }
+
+  const geometry = value.geometry;
+  if (!isObjectRecord(geometry) || geometry.type !== "Point" || !Array.isArray(geometry.coordinates)) {
+    return null;
+  }
+
+  const lon = Number(geometry.coordinates[0]);
+  const lat = Number(geometry.coordinates[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+
+  const props = isObjectRecord(value.properties) ? value.properties : {};
+
+  return {
+    type: "Feature",
+    geometry: {
+      type: "Point",
+      coordinates: [lon, lat],
+    },
+    properties: {
+      hex: stringOrDefault(props.hex, "unknown"),
+      flight: stringOrDefault(props.flight),
+      category: stringOrDefault(props.category),
+      aircraft_type: stringOrDefault(props.aircraft_type),
+      registration: stringOrDefault(props.registration),
+      manufacturer: stringOrDefault(props.manufacturer),
+      icao_type_code: stringOrDefault(props.icao_type_code),
+      operator_flag_code: stringOrDefault(props.operator_flag_code),
+      registered_owners: stringOrDefault(props.registered_owners),
+      airframe_image_url: stringOrDefault(props.airframe_image_url),
+      altitude_ft: numberOrNull(props.altitude_ft),
+      speed_kt: numberOrNull(props.speed_kt),
+      track_deg: numberOrNull(props.track_deg),
+      seen_s: numberOrNull(props.seen_s),
+    },
+  };
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+function stringOrDefault(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function numberOrNull(value: unknown): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function formatUpdated(value: unknown): string {
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleTimeString();
+    }
+  }
+  return "unknown";
 }
 
 function markerColor(altitudeFt: number | null | undefined): string {
@@ -1219,98 +1103,6 @@ function firstNonEmptyString(values: Array<unknown>): string {
   return "";
 }
 
-function normalizeHex(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-  const cleaned = value.trim().toUpperCase();
-  return /^[0-9A-F]{6}$/.test(cleaned) ? cleaned : "";
-}
-
-function mergeHexDbIntoProperties(props: FlightFeatureProperties, info: HexDbAircraftInfo): boolean {
-  let changed = false;
-
-  const applyIfPresent = (key: keyof FlightFeatureProperties, value: string) => {
-    if (!value) {
-      return;
-    }
-    if (props[key] !== value) {
-      props[key] = value as never;
-      changed = true;
-    }
-  };
-
-  if (!props.aircraft_type && info.type) {
-    props.aircraft_type = info.type;
-    changed = true;
-  } else {
-    applyIfPresent("aircraft_type", props.aircraft_type || info.type);
-  }
-  applyIfPresent("registration", info.registration);
-  applyIfPresent("manufacturer", info.manufacturer);
-  applyIfPresent("icao_type_code", info.icaoTypeCode);
-  applyIfPresent("operator_flag_code", info.operatorFlagCode);
-  applyIfPresent("registered_owners", info.registeredOwners);
-  applyIfPresent("airframe_image_url", info.imageUrl);
-
-  return changed;
-}
-
-function resolveAircraftType(item: AircraftEntry): string {
-  return firstNonEmptyString([item.t, item.type, item.ac_type, item.aircraft_type, item.desc]);
-}
-
-function aircraftToGeoJson(payload: AircraftPayload, maxAgeSeconds: number): FlightCollection {
-  const aircraft = Array.isArray(payload.aircraft) ? payload.aircraft : [];
-
-  const features: FlightFeature[] = aircraft
-    .filter((item) => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)))
-    .filter((item) => {
-      const seen = Number(item.seen ?? item.seen_pos ?? 0);
-      return !Number.isFinite(seen) || seen <= maxAgeSeconds;
-    })
-    .map((item) => {
-      const hex = String(item.hex || "unknown").toLowerCase();
-      const flight = typeof item.flight === "string" ? item.flight.trim() : "";
-      const category = typeof item.category === "string" ? item.category.trim() : "";
-      const aircraftType = resolveAircraftType(item);
-
-      return {
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [Number(item.lon), Number(item.lat)],
-        },
-        properties: {
-          hex,
-          flight,
-          category,
-          aircraft_type: aircraftType,
-          registration: "",
-          manufacturer: "",
-          icao_type_code: "",
-          operator_flag_code: "",
-          registered_owners: "",
-          airframe_image_url: "",
-          altitude_ft: numberOrNull(item.alt_baro ?? item.altitude ?? item.alt_geom),
-          speed_kt: numberOrNull(item.gs ?? item.speed),
-          track_deg: numberOrNull(item.track),
-          seen_s: numberOrNull(item.seen ?? item.seen_pos),
-        },
-      };
-    });
-
-  return {
-    type: "FeatureCollection",
-    features,
-  };
-}
-
-function numberOrNull(value: number | string | null | undefined): number | null {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -1336,7 +1128,7 @@ function registerCustomCard(): void {
     window.customCards.push({
       type: CARD_TYPE,
       name: "Flight Card",
-      description: "Poll SkyAware aircraft.json, convert to GeoJSON, and display aircraft on a live map.",
+      description: "Display aircraft from the Flight Card integration sensor on a live map.",
       documentationURL: "https://developers.home-assistant.io/docs/frontend/custom-ui/custom-card/",
     });
   }

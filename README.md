@@ -1,153 +1,136 @@
 # Flight Card
 
-Home Assistant Lovelace custom card that polls SkyAware `aircraft.json`, converts aircraft records to GeoJSON, and renders them on a live map.
+Flight Card is a Home Assistant solution for showing live nearby aircraft on a Lovelace map.
 
-## References
+It includes:
 
-This setup follows Home Assistant frontend guidance for custom cards and development environments:
+- a backend integration (`flight_card`) that polls SkyAware and enriches data with HexDB
+- a Lovelace custom card (`custom:flight-card`) that renders aircraft on the map
 
-- [Custom cards](https://developers.home-assistant.io/docs/frontend/custom-ui/custom-card/)
-- [Frontend development setup](https://developers.home-assistant.io/docs/frontend/development)
-- [Devcontainer environment](https://developers.home-assistant.io/docs/setup_devcontainer_environment/)
+![Flight Card preview](docs/preview.svg)
 
-## Project Layout
+## Requirements
 
-- `src/flight-card.ts`: card source (polling, GeoJSON conversion, Leaflet rendering)
-- `dist/flight-card.js`: compiled card bundle (generated)
-- `.devcontainer/`: VS Code devcontainer config
-- `.vscode/tasks.json`: build + Home Assistant helper tasks
-- `docker-compose.home-assistant.yml`: optional local Home Assistant for testing
+- Home Assistant
+- A reachable SkyAware endpoint (for example `http://10.10.0.249/skyaware/data/aircraft.json`)
+- HACS (recommended)
 
-## VS Code + Devcontainer Quick Start
+## Install (HACS - Recommended)
 
-1. Open this repo in VS Code.
-2. Run `Dev Containers: Reopen in Container`.
-3. Wait for the `postCreateCommand` (`npm ci`) to finish.
-4. Build once:
+This repository should be installed in HACS as **both** repository types:
 
-```bash
-npm run build
-```
+1. Add `https://github.com/aplittlecub/Flight-Card` as **Integration** custom repository.
+2. Install **Flight Card** (Integration).
+3. Restart Home Assistant.
+4. Add the same repo as **Dashboard** custom repository.
+5. Install **Flight Card** (Dashboard).
+6. Confirm Lovelace resource exists:
+   - URL: `/hacsfiles/Flight-Card/flight-card.js`
+   - Type: `JavaScript Module`
 
-5. For continuous rebuilds while editing:
+## Configure Integration
 
-```bash
-npm run build:watch
-```
+1. Go to **Settings -> Devices & Services -> Add Integration**.
+2. Search for **Flight Card**.
+3. Configure:
+   - `Data URL` (example: `http://10.10.0.249/skyaware/data/aircraft.json`)
+   - `Update interval (seconds)`
+   - `Max aircraft age (seconds)`
+   - `Enable HexDB enrichment`
+4. Finish setup.
+5. Confirm the sensor exists in **Developer Tools -> States** (usually `sensor.aircraft`).
 
-`build:watch` keeps updating `dist/flight-card.js`.
-
-## Local Home Assistant Test Stack (optional)
-
-Use the included compose file to run Home Assistant and auto-mount this card bundle:
-
-```bash
-docker compose -f docker-compose.home-assistant.yml up -d
-```
-
-- Home Assistant UI: `http://localhost:8123`
-- Card bundle mounted at: `/config/www/flight-card/flight-card.js`
-- Lovelace resource URL to add: `/local/flight-card/flight-card.js`
-
-Stop stack:
-
-```bash
-docker compose -f docker-compose.home-assistant.yml down
-```
-
-## Add The Card
+## Add Card to Dashboard
 
 ```yaml
 type: custom:flight-card
 title: Nearby Aircraft
-data_url: http://10.10.0.249/skyaware/data/aircraft.json
-update_interval: 10
-max_age: 60
-hexdb_enabled: true
+entity: sensor.aircraft
 map_height: 420
 default_zoom: 8
 fit_bounds: true
 ```
 
-## Configuration
+## Card Options
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `title` | string | `Nearby Aircraft` | Card title |
-| `data_url` | string | `http://10.10.0.249/skyaware/data/aircraft.json` | SkyAware endpoint |
-| `update_interval` | number | `10` | Poll interval (seconds) |
-| `max_age` | number | `60` | Max `seen` age in seconds |
-| `hexdb_enabled` | boolean | `true` | Enrich with HexDB aircraft metadata and image |
+| `entity` | string | `sensor.aircraft` | Sensor created by the Flight Card integration |
 | `map_height` | number | `420` | Map height in px |
 | `default_zoom` | number | `8` | Initial zoom |
-| `fit_bounds` | boolean | `true` | Auto-fit map to aircraft |
+| `fit_bounds` | boolean | `true` | Auto-fit map to aircraft once per load |
 | `center_lat` | number | `null` | Optional initial center latitude |
 | `center_lon` | number | `null` | Optional initial center longitude |
 | `tile_url` | string | OSM | Map tile URL |
 | `attribution` | string | OSM | Tile attribution |
 
-## Notes
+## Integration Options
 
-- Aircraft with missing `lat`/`lon` are skipped.
-- Aircraft older than `max_age` are filtered out.
-- When `hexdb_enabled` is true, the card queries `https://hexdb.io/api/v1/aircraft/{hex}` and shows an airframe image from `https://hexdb.io/hex-image-thumb?hex={hex}`.
-- If Home Assistant is HTTPS and `data_url` is HTTP, browser mixed-content rules can block requests.
-- SkyAware endpoint must allow requests from your Home Assistant frontend origin (CORS).
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `data_url` | string | `http://10.10.0.249/skyaware/data/aircraft.json` | SkyAware endpoint |
+| `update_interval` | number | `10` | Poll interval (seconds) |
+| `max_age` | number | `60` | Max `seen` age in seconds |
+| `hexdb_enabled` | boolean | `true` | Enrich data with HexDB metadata and airframe image |
 
-## Third-Party Licensing & Attribution
+## Troubleshooting
 
-This project uses third-party libraries, map data/tiles, icon assets, and API services.
+- If the card says `Entity not found`, set `entity:` to the exact sensor ID from Developer Tools.
+- If the map is empty but sensor has data, hard refresh browser and cache-bust the resource URL.
+- If the integration does not appear, restart Home Assistant after installation.
+- If the sensor is unavailable, verify Home Assistant can reach your `data_url`.
 
-### 1) Leaflet (map rendering)
+## Manual / Local Install
 
-- Package: `leaflet`
-- License: BSD 2-Clause
-- Copyright:
-  - Volodymyr Agafonkin (2010-2023)
-  - CloudMade (2010-2011)
-- Source: `node_modules/leaflet/LICENSE`
+If you are not using HACS:
 
-### 2) OpenStreetMap (map tiles/data)
+1. Copy `custom_components/flight_card` into your Home Assistant config folder (`/config/custom_components/flight_card`).
+2. Build frontend bundle: `npm run build`.
+3. Copy `dist/flight-card.js` into `/config/www/flight-card/flight-card.js`.
+4. Add Lovelace resource:
+   - URL: `/local/flight-card/flight-card.js`
+   - Type: `JavaScript Module`
+5. Restart Home Assistant.
 
-- Tile URL default: `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`
-- Attribution is required when using OSM data/tiles.
-- This card includes OSM attribution by default via:
-  - `attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>"`
-- If you change `tile_url`, ensure you keep the required attribution for that provider.
+## Licensing & Attribution (Final Published - v0.3.1)
 
-### 3) ADS-B Radar SVG icon pack
+Flight Card source code is published under **MIT** (see `package.json`).
 
-- Asset source: `ADS-B_Radar_Free_Aircraft_SVG_Icons.zip`
-- License summary (from icon pack readme):
-  - Free for personal and commercial use.
-  - Requirement: provide a backlink to ADS-B Radar in your project, website, or documentation (or buy the app).
-- Required attribution example:
-  - `Icons by ADS-B Radar for macOS - https://adsb-radar.com - https://apps.apple.com/app/id1538149835`
+Third-party assets/services used by this release:
 
-### 4) HexDB API + airframe image lookup
+| Component | License / Terms | Required / Recommended attribution |
+| --- | --- | --- |
+| Leaflet (`leaflet` v1.9.4) | BSD 2-Clause | Keep Leaflet license in redistribution/docs when required (`node_modules/leaflet/LICENSE`) |
+| OpenStreetMap tiles/data (default layer) | OSM attribution policy | **Required:** `© OpenStreetMap contributors` with link to https://www.openstreetmap.org/copyright |
+| ADS-B Radar aircraft SVG icon pack | Free for personal/commercial use with backlink requirement (per icon pack readme) | **Required:** `Icons by ADS-B Radar for macOS - https://adsb-radar.com - https://apps.apple.com/app/id1538149835` |
+| HexDB lookup API + airframe image endpoint | Service usage terms at provider | **Recommended:** `Aircraft metadata and airframe image lookup by HexDB - https://hexdb.io` |
 
-- Endpoints used:
-  - `https://hexdb.io/api/v1/aircraft/{hex}`
-  - `https://hexdb.io/hex-image-thumb?hex={hex}`
-- Attribution recommended in project/docs:
-  - `Aircraft metadata and airframe image lookup by HexDB - https://hexdb.io`
-- HexDB homepage credits its upstream data sources as:
-  - Federal Aviation Administration (FAA)
-  - OpenSky Network
-  - Plane-Spotters.net
-  - Flightradar24
+HexDB endpoints used by this project:
 
-### 5) Your SkyAware/receiver data source
+- `https://hexdb.io/api/v1/aircraft/{hex}`
+- `https://hexdb.io/hex-image-thumb?hex={hex}`
 
-- Endpoint configured in this card: `data_url`
-- Ensure your use of that data complies with the terms/policies of your own receiver setup and any upstream feeds.
-
-### Copy/Paste Attribution Block
-
-Use this block in docs, repo README, or project website:
+### Copy/paste attribution block (recommended for docs/footer)
 
 ```text
 Map data © OpenStreetMap contributors (https://www.openstreetmap.org/copyright)
 Icons by ADS-B Radar for macOS - https://adsb-radar.com - https://apps.apple.com/app/id1538149835
 Aircraft metadata and airframe image lookup by HexDB - https://hexdb.io
 ```
+
+## Developer Notes
+
+- Local test stack: `docker compose -f docker-compose.home-assistant.yml up -d`
+- Dev container setup is included in `.devcontainer/`
+- Build commands:
+  - `npm run check`
+  - `npm run build`
+  - `npm run build:watch`
+
+## References
+
+- Home Assistant custom cards: https://developers.home-assistant.io/docs/frontend/custom-ui/custom-card/
+- Home Assistant frontend data model: https://developers.home-assistant.io/docs/frontend/data/
+- Home Assistant data fetching best practices: https://developers.home-assistant.io/docs/integration_fetching_data/
+- HACS publish guidance: https://www.hacs.xyz/docs/publish/include/

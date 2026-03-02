@@ -1,6 +1,6 @@
 {
   "name": "flight-card",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Home Assistant Lovelace card for live aircraft mapping from SkyAware.",
   "type": "module",
   "license": "MIT",

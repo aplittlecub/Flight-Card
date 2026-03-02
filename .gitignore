@@ -1,4 +1,7 @@
 node_modules/
-dist/
+dist/*
+!dist/flight-card.js
 .DS_Store
 local-ha/
+__pycache__/
+*.pyc

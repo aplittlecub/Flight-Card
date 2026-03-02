@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Flight Card",
+        "description": "Configure the aircraft data source and polling behavior.",
+        "data": {
+          "name": "Name",
+          "data_url": "Data URL",
+          "update_interval": "Update interval (seconds)",
+          "max_age": "Max aircraft age (seconds)",
+          "hexdb_enabled": "Enable HexDB enrichment"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Flight Card options",
+        "description": "Adjust data source and update behavior.",
+        "data": {
+          "data_url": "Data URL",
+          "update_interval": "Update interval (seconds)",
+          "max_age": "Max aircraft age (seconds)",
+          "hexdb_enabled": "Enable HexDB enrichment"
+        }
+      }
+    }
+  }
+}
