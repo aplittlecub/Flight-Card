@@ -1,0 +1,20 @@
+services:
+  homeassistant:
+    container_name: flight-card-ha
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    environment:
+      - TZ=Europe/London
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /config/www/flight-card
+        cp -f /opt/flight-card-dist/flight-card.js /config/www/flight-card/ 2>/dev/null || true
+        cp -f /opt/flight-card-dist/flight-card.js.map /config/www/flight-card/ 2>/dev/null || true
+        exec /init
+    volumes:
+      - ./local-ha/config:/config
+      - ./dist:/opt/flight-card-dist:ro

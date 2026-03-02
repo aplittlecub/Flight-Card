@@ -1,0 +1,35 @@
+{
+  "name": "Flight Card",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "home-assistant.home-assistant",
+        "ms-azuretools.vscode-docker",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      }
+    }
+  },
+  "forwardPorts": [8123, 5173],
+  "portsAttributes": {
+    "8123": {
+      "label": "Home Assistant",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Vite",
+      "onAutoForward": "silent"
+    }
+  },
+  "remoteUser": "node"
+}

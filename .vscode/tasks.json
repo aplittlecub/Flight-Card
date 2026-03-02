@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: install",
+      "type": "shell",
+      "command": "npm ci",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: typecheck",
+      "type": "shell",
+      "command": "npm run check",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: build",
+      "type": "shell",
+      "command": "npm run build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: watch",
+      "type": "shell",
+      "command": "npm run build:watch",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "ha: up",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.home-assistant.yml up -d",
+      "problemMatcher": []
+    },
+    {
+      "label": "ha: logs",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.home-assistant.yml logs -f homeassistant",
+      "problemMatcher": []
+    },
+    {
+      "label": "ha: down",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.home-assistant.yml down",
+      "problemMatcher": []
+    }
+  ]
+}

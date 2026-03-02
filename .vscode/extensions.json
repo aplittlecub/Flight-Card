@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "home-assistant.home-assistant",
+    "ms-azuretools.vscode-docker",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode"
+  ]
+}
