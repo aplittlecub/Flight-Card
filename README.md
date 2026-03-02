@@ -12,7 +12,7 @@ It includes:
 ## Requirements
 
 - Home Assistant
-- A reachable SkyAware endpoint (for example `http://192.168.1.250/skyaware/data/aircraft.json`)
+- A reachable SkyAware endpoint (for example `http://your-skyaware-host/skyaware/data/aircraft.json`)
 - HACS (recommended)
 
 ## Install (HACS - Recommended)
@@ -32,7 +32,7 @@ This integration now auto-serves and auto-loads the card JavaScript from:
 1. Go to **Settings -> Devices & Services -> Add Integration**.
 2. Search for **ADS-B Nearby Aircraft**.
 3. Configure:
-   - `Data URL` (example: `http://192.168.1.250/skyaware/data/aircraft.json`)
+   - `Data URL` (example: `http://your-skyaware-host/skyaware/data/aircraft.json`)
    - `Update interval (seconds)`
    - `Max aircraft age (seconds)`
    - `Enable HexDB enrichment`
@@ -115,7 +115,7 @@ Matching order matters: first match wins in `iconFromTypeToken`.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `data_url` | string | `http://192.168.1.250/skyaware/data/aircraft.json` | SkyAware endpoint |
+| `data_url` | string | demo URL shown in form | SkyAware endpoint |
 | `update_interval` | number | `10` | Poll interval (seconds) |
 | `max_age` | number | `60` | Max `seen` age in seconds |
 | `hexdb_enabled` | boolean | `true` | Enrich data with HexDB metadata and airframe image |

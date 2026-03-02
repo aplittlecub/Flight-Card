@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -14,7 +15,7 @@ from .const import (
     CONF_MAX_AGE,
     CONF_NAME,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_DATA_URL,
+    DEMO_DATA_URL,
     DEFAULT_HEXDB_ENABLED,
     DEFAULT_MAX_AGE,
     DEFAULT_NAME,
@@ -59,6 +60,21 @@ def _options_schema() -> vol.Schema:
     )
 
 
+def _validate_data_url(url: str) -> str | None:
+    """Validate user-provided data URL."""
+    if not url:
+        return "invalid_data_url"
+
+    if url == DEMO_DATA_URL:
+        return "replace_demo_data_url"
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "invalid_data_url"
+
+    return None
+
+
 class FlightCardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for ADS-B Nearby Aircraft."""
 
@@ -69,16 +85,28 @@ class FlightCardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             cleaned_input = dict(user_input)
             cleaned_input[CONF_DATA_URL] = normalize_data_url(cleaned_input.get(CONF_DATA_URL))
+            errors: dict[str, str] = {}
 
-            await self.async_set_unique_id(cleaned_input[CONF_NAME].strip().lower())
-            self._abort_if_unique_id_configured()
+            data_url_error = _validate_data_url(cleaned_input[CONF_DATA_URL])
+            if data_url_error:
+                errors[CONF_DATA_URL] = data_url_error
 
-            title = cleaned_input[CONF_NAME].strip() or DEFAULT_NAME
-            return self.async_create_entry(title=title, data=cleaned_input)
+            if not errors:
+                await self.async_set_unique_id(cleaned_input[CONF_NAME].strip().lower())
+                self._abort_if_unique_id_configured()
+
+                title = cleaned_input[CONF_NAME].strip() or DEFAULT_NAME
+                return self.async_create_entry(title=title, data=cleaned_input)
+
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self.add_suggested_values_to_schema(_data_schema(), cleaned_input),
+                errors=errors,
+            )
 
         defaults = {
             CONF_NAME: DEFAULT_NAME,
-            CONF_DATA_URL: DEFAULT_DATA_URL,
+            CONF_DATA_URL: DEMO_DATA_URL,
             CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
             CONF_MAX_AGE: DEFAULT_MAX_AGE,
             CONF_HEXDB_ENABLED: DEFAULT_HEXDB_ENABLED,
@@ -108,13 +136,26 @@ class FlightCardOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             cleaned_input = dict(user_input)
             cleaned_input[CONF_DATA_URL] = normalize_data_url(cleaned_input.get(CONF_DATA_URL))
-            return self.async_create_entry(title="", data=cleaned_input)
+            errors: dict[str, str] = {}
+
+            data_url_error = _validate_data_url(cleaned_input[CONF_DATA_URL])
+            if data_url_error:
+                errors[CONF_DATA_URL] = data_url_error
+
+            if not errors:
+                return self.async_create_entry(title="", data=cleaned_input)
+
+            return self.async_show_form(
+                step_id="init",
+                data_schema=self.add_suggested_values_to_schema(_options_schema(), cleaned_input),
+                errors=errors,
+            )
 
         defaults = {
             CONF_DATA_URL: normalize_data_url(
                 self._config_entry.options.get(
                     CONF_DATA_URL,
-                    self._config_entry.data.get(CONF_DATA_URL, DEFAULT_DATA_URL),
+                    self._config_entry.data.get(CONF_DATA_URL, DEMO_DATA_URL),
                 )
             ),
             CONF_UPDATE_INTERVAL: self._config_entry.options.get(

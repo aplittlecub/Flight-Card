@@ -20,7 +20,6 @@ from .const import (
     CONF_HEXDB_ENABLED,
     CONF_MAX_AGE,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_DATA_URL,
     DEFAULT_HEXDB_ENABLED,
     DEFAULT_MAX_AGE,
     DEFAULT_UPDATE_INTERVAL,
@@ -65,7 +64,7 @@ class FlightCardDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def data_url(self) -> str:
-        return normalize_data_url(self._option_value(CONF_DATA_URL, DEFAULT_DATA_URL))
+        return normalize_data_url(self._option_value(CONF_DATA_URL, ""))
 
     @property
     def max_age(self) -> int:

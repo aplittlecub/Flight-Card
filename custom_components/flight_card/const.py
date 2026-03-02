@@ -14,10 +14,7 @@ CONF_MAX_AGE = "max_age"
 CONF_HEXDB_ENABLED = "hexdb_enabled"
 
 DEFAULT_NAME = "ADS-B Nearby Aircraft"
-DEFAULT_DATA_URL = "http://192.168.1.250/skyaware/data/aircraft.json"
-LEGACY_DATA_URLS = {
-    "http://10.10.0.249/skyaware/data/aircraft.json",
-}
+DEMO_DATA_URL = "http://your-skyaware-host/skyaware/data/aircraft.json"
 DEFAULT_UPDATE_INTERVAL = 10
 DEFAULT_MAX_AGE = 60
 DEFAULT_HEXDB_ENABLED = True
@@ -28,10 +25,6 @@ MAX_HEXDB_LOOKUPS_PER_UPDATE = 6
 
 
 def normalize_data_url(value: object) -> str:
-    """Normalize data URL and rewrite legacy defaults."""
+    """Normalize data URL without rewriting user-provided hosts."""
     url = str(value or "").strip()
-    if not url:
-        return DEFAULT_DATA_URL
-    if url in LEGACY_DATA_URLS:
-        return DEFAULT_DATA_URL
     return url

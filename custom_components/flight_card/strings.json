@@ -1,9 +1,13 @@
 {
   "config": {
+    "error": {
+      "invalid_data_url": "Enter a full URL starting with http:// or https://.",
+      "replace_demo_data_url": "Replace the demo URL with your actual SkyAware endpoint."
+    },
     "step": {
       "user": {
         "title": "Set up ADS-B Nearby Aircraft",
-        "description": "Configure the aircraft data source and polling behavior.",
+        "description": "Configure the aircraft data source and polling behavior. Example URL: http://your-skyaware-host/skyaware/data/aircraft.json",
         "data": {
           "name": "Name",
           "data_url": "Data URL",
@@ -18,7 +22,7 @@
     "step": {
       "init": {
         "title": "ADS-B Nearby Aircraft options",
-        "description": "Adjust data source and update behavior.",
+        "description": "Adjust data source and update behavior. Example URL: http://your-skyaware-host/skyaware/data/aircraft.json",
         "data": {
           "data_url": "Data URL",
           "update_interval": "Update interval (seconds)",
