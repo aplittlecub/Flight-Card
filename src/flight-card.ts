@@ -265,8 +265,14 @@ class FlightCard extends HTMLElement {
           display: block;
         }
 
+        ha-card {
+          position: relative;
+        }
+
         .flight-card {
           display: block;
+          position: relative;
+          z-index: 0;
         }
 
         .flight-card__header {
@@ -320,6 +326,9 @@ class FlightCard extends HTMLElement {
 
         .flight-card__map {
           position: relative;
+          z-index: 0;
+          isolation: isolate;
+          contain: layout paint;
           width: 100%;
           border-radius: 12px;
           overflow: hidden;
@@ -328,8 +337,19 @@ class FlightCard extends HTMLElement {
         }
 
         .flight-card__map .leaflet-container {
+          position: relative;
+          z-index: 0;
           width: 100%;
           height: 100%;
+        }
+
+        .flight-card__map .leaflet-pane {
+          z-index: 1;
+        }
+
+        .flight-card__map .leaflet-top,
+        .flight-card__map .leaflet-bottom {
+          z-index: 2;
         }
 
         .flight-card__map .leaflet-tile,
