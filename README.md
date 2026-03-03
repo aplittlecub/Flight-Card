@@ -158,8 +158,6 @@ HexDB endpoints used by this project:
 - `https://hexdb.io/api/v1/aircraft/{hex}`
 - `https://hexdb.io/hex-image-thumb?hex={hex}`
 
-### Copy/paste attribution block (recommended for docs/footer)
-
 ```text
 Map data © OpenStreetMap contributors (https://www.openstreetmap.org/copyright)
 Icons by ADS-B Radar for macOS - https://adsb-radar.com - https://apps.apple.com/app/id1538149835
