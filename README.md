@@ -7,8 +7,8 @@ It includes:
 - a backend integration (`flight_card`) that polls SkyAware and enriches data with HexDB
 - a Lovelace custom card (`custom:flight-card`) that renders aircraft on the map
 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aplittlecub/ADS-B-SkyVista/validate-hacs.yml?style=for-the-badge&logo=homeassistantcommunitystore&label=HACS%20Validation)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aplittlecub/ADS-B-SkyVista/validate-hassfest.yml?style=for-the-badge&logo=homeassistant&label=Hassfest%20Validation) ![GitHub commit activity](https://img.shields.io/github/commit-activity/t/aplittlecub/ADS-B-SkyVista?style=for-the-badge) ![GitHub Release](https://img.shields.io/github/v/release/aplittlecub/ADS-B-SkyVista?include_prereleases&display_name=release&style=for-the-badge)
+<center>![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aplittlecub/ADS-B-SkyVista/validate-hacs.yml?style=for-the-badge&logo=homeassistantcommunitystore&label=HACS%20Validation)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aplittlecub/ADS-B-SkyVista/validate-hassfest.yml?style=for-the-badge&logo=homeassistant&label=Hassfest%20Validation) ![GitHub commit activity](https://img.shields.io/github/commit-activity/t/aplittlecub/ADS-B-SkyVista?style=for-the-badge) ![GitHub Release](https://img.shields.io/github/v/release/aplittlecub/ADS-B-SkyVista?include_prereleases&display_name=release&style=for-the-badge)</center>
 
 ![ADS-B SkyVista preview](docs/preview.svg)
 
