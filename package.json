@@ -1,7 +1,7 @@
 {
   "name": "adsb-skyvista",
   "version": "0.3.2",
-  "description": "Home Assistant integration and Lovelace card for ADS-B SkyVista mapping.",
+  "description": "Display aircraft detected by your local dump1090 receiver directly in Home Assistant.",
   "type": "module",
   "license": "MIT",
   "scripts": {
